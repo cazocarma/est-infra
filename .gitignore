@@ -1,0 +1,7 @@
+.env
+.env.local
+*.bak
+*.trn
+*.mdf
+*.ldf
+docker-compose.override.yml

@@ -1,0 +1,121 @@
+name: greenvic-est-${EST_ENV:-prd}
+
+# =============================================================================
+# EST — docker-compose base (prod-like).
+# Alineado con platform/docs/PLATFORM_INTEGRATION_SPEC.md.
+#
+# Consume las redes externas de platform:
+#   - platform_identity  (Keycloak)
+#   - platform_cache     (Redis — DB 4 reservada para EST)
+# El router de platform (NGINX :82) alcanza este stack por los aliases
+# `est-frontend` y `est-backend` en la red propia `greenvic-est-${EST_ENV}_default`.
+#
+# En dev, docker-compose.override.yml agrega bind mounts para hot-reload.
+# =============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
+services:
+  front-ng:
+    build:
+      context: ../est-front-ng
+      dockerfile: Dockerfile
+      target: runtime
+    image: est-front-ng:${EST_ENV:-prd}
+    container_name: est-front-${EST_ENV:-prd}
+    init: true
+    restart: unless-stopped
+    pull_policy: never
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:uid=101,gid=101
+      - /var/run:uid=101,gid=101
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      <<: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    expose:
+      - "3000"
+    networks:
+      default:
+        aliases:
+          - est-frontend
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -q -O - http://127.0.0.1:3000/healthz > /dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  back:
+    build:
+      context: ../est-back
+      dockerfile: Dockerfile
+      target: runtime
+    image: est-back:${EST_ENV:-prd}
+    container_name: est-back-${EST_ENV:-prd}
+    init: true
+    restart: unless-stopped
+    pull_policy: never
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      <<: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: "${NODE_ENV:-production}"
+      PORT: "4000"
+    volumes:
+      - est_uploads:/var/lib/est/uploads
+    expose:
+      - "4000"
+    networks:
+      default:
+        aliases:
+          - est-backend
+      identity:
+      cache:
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  est_uploads:
+
+networks:
+  default:
+    external: true
+    name: greenvic-est-${EST_ENV:-prd}_default
+  identity:
+    external: true
+    name: platform_identity
+  cache:
+    external: true
+    name: platform_cache

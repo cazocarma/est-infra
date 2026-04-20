@@ -1,0 +1,64 @@
+# =============================================================================
+# EST — docker-compose.dev.yml (local dev overlay)
+# Se carga SOLO cuando EST_ENV=dev (via Makefile). No se auto-loadea.
+#
+# Diseno:
+#   - Back corre `tsx watch` sobre /app/src (bind mount :ro).
+#   - node_modules + tsconfig baked en la imagen (stage `dev`).
+#   - Front corre `ng serve` con hot-reload.
+#   - Lift de limites de memoria: esbuild/Angular piden mas que prd.
+#
+# Requisitos:
+#   - `platform` arriba en el mismo host con PLATFORM_ENV=dev.
+#   - EST_ENV=dev en .env.
+# =============================================================================
+
+services:
+  back:
+    image: est-back:dev
+    container_name: est-back-dev
+    build:
+      target: dev
+    read_only: false
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      OIDC_ISSUER_URL: http://localhost:8080/realms/ESTRealm
+      OIDC_REDIRECT_URI: http://localhost:82/api/v1/auth/callback
+      OIDC_POST_LOGOUT_REDIRECT_URI: http://localhost:82/login
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_COOKIE_SAMESITE: lax
+    volumes:
+      - ../est-back/src:/app/src:ro
+      - ../est-back/package.json:/app/package.json:ro
+      - ../est-back/package-lock.json:/app/package-lock.json:ro
+      - ../est-back/tsconfig.json:/app/tsconfig.json:ro
+      - ../est-back/tsconfig.build.json:/app/tsconfig.build.json:ro
+      - ./.env:/app/.env:ro
+      - est_uploads:/var/lib/est/uploads
+
+  front-ng:
+    image: est-front-ng:dev
+    container_name: est-front-dev
+    build:
+      target: build
+    read_only: false
+    user: "0:0"
+    command:
+      - "sh"
+      - "-lc"
+      - "npx ng serve --host 0.0.0.0 --port 3000 --poll 1000 --allowed-hosts=all --proxy-config proxy.conf.json"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+    volumes:
+      - ../est-front-ng/src:/app/src:cached
+      - ../est-front-ng/angular.json:/app/angular.json:ro
+      - ../est-front-ng/tsconfig.json:/app/tsconfig.json:ro
+      - ../est-front-ng/tsconfig.app.json:/app/tsconfig.app.json:ro
+      - ../est-front-ng/tailwind.config.js:/app/tailwind.config.js:ro
+      - ../est-front-ng/postcss.config.js:/app/postcss.config.js:ro
+      - ../est-front-ng/proxy.conf.json:/app/proxy.conf.json:ro
+      - ../est-front-ng/package.json:/app/package.json:ro
