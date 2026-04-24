@@ -1,0 +1,29 @@
+name: greenvic-est-${EST_ENV:-prd}
+
+# =============================================================================
+# EST — docker-compose.prd.yml (overlay PRODUCCION)
+#
+# Se usa automaticamente cuando EST_ENV=prd en .env.
+# Combinacion: docker compose -f docker-compose.yml -f docker-compose.prd.yml
+#
+# Define los overrides especificos de prd:
+#   - NODE_ENV=production, LOG_LEVEL=info.
+#   - OIDC URLs publicas -> 192.168.18.18:82 (router prd greenvic).
+#   - Cookies secure + samesite=strict (requerido por AUTH_STANDARD §8).
+#
+# El base (docker-compose.yml) ya trae la imagen runtime con read_only,
+# resource limits y healthcheck. Este overlay solo inyecta vars de ambiente.
+# =============================================================================
+
+services:
+  back:
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      # OIDC: browser -> Keycloak prd (router greenvic :8080).
+      OIDC_ISSUER_URL: http://192.168.18.18:8080/realms/ESTRealm
+      OIDC_REDIRECT_URI: http://192.168.18.18:82/api/v1/auth/callback
+      OIDC_POST_LOGOUT_REDIRECT_URI: http://192.168.18.18:82/login
+      # Cookies endurecidas para prd (AUTH_STANDARD §8).
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_SAMESITE: strict
